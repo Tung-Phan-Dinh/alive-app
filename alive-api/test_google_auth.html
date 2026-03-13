@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Auth Test</title>
+    <script src="https://accounts.google.com/gsi/client" async></script>
+</head>
+<body>
+    <h1>Google Auth Test</h1>
+
+    <div id="g_id_onload"
+         data-client_id="448454575884-s1pgiict43ot6o5h4uc1u4llv04p195a.apps.googleusercontent.com"
+         data-callback="handleCredentialResponse">
+    </div>
+    <div class="g_id_signin" data-type="standard"></div>
+
+    <h2>Result:</h2>
+    <pre id="result">Click the button above to sign in...</pre>
+
+    <script>
+    async function handleCredentialResponse(response) {
+        const idToken = response.credential;
+        document.getElementById('result').textContent = 'Got token, sending to backend...\n\nToken: ' + idToken.substring(0, 50) + '...';
+
+        try {
+            const res = await fetch('http://localhost:8000/api/v1/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id_token: idToken })
+            });
+
+            const data = await res.json();
+            document.getElementById('result').textContent =
+                'Status: ' + res.status + '\n\n' + JSON.stringify(data, null, 2);
+        } catch (err) {
+            document.getElementById('result').textContent = 'Error: ' + err.message;
+        }
+    }
+    </script>
+</body>
+</html>

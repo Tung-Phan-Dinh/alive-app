@@ -1,0 +1,7 @@
+.env
+command.txt
+test
+alive_venv/
+__pycache__/
+*.pyc
+.DS_Store
