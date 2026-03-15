@@ -1,0 +1,50 @@
+# Alive App Trigger Worker Service
+# This service is triggered by alive-trigger.timer
+#
+# Install:
+#   sudo cp alive-trigger.service /etc/systemd/system/
+#   sudo cp alive-trigger.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable alive-trigger.timer
+#   sudo systemctl start alive-trigger.timer
+
+[Unit]
+Description=Alive App Trigger Worker - Check missed deadlines and send notifications
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+
+# Working directory (adjust to your deployment path)
+WorkingDirectory=/opt/alive-api
+
+# Use the virtual environment Python
+ExecStart=/opt/alive-api/alive_venv/bin/python -m app.worker.trigger_worker
+
+# Environment file with secrets
+EnvironmentFile=/opt/alive-api/.env
+
+# Resource limits
+# CPUQuota explanation:
+# - On a VM with 8 cores, 100% = 1 full core
+# - To limit to 50% of the whole VM (4 cores): CPUQuota=400%
+# - To limit to 50% of one core: CPUQuota=50%
+# Since owner wants max 50% of VM (8 cores), use 400%
+CPUQuota=400%
+MemoryMax=512M
+
+# Timeout for the job (in case it hangs)
+TimeoutStartSec=300
+
+# Restart on failure (timer will retry anyway)
+Restart=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alive-trigger
+
+[Install]
+WantedBy=multi-user.target

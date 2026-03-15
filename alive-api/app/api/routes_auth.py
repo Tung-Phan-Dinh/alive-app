@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+import logging
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +15,7 @@ from app.db.session import get_db
 from app.db.models import User
 from app.core.security import create_access_token, hash_password, verify_password
 from app.core.config import settings
+from app.core.apple_auth import verify_apple_token, AppleAuthError
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -32,7 +36,8 @@ class GoogleAuthReq(BaseModel):
 
 class AppleAuthReq(BaseModel):
     identity_token: str
-    user_email: EmailStr
+    user_email: Optional[EmailStr] = None
+    nonce: Optional[str] = None
 
 @router.post("/dev")
 async def dev_login(payload: DevLoginReq, db: AsyncSession = Depends(get_db)):
@@ -98,9 +103,23 @@ async def google_login(payload: GoogleAuthReq, db: AsyncSession = Depends(get_db
     if not email:
         raise HTTPException(status_code=400, detail="Email not provided by Google")
 
-    res = await db.execute(select(User).where(User.email == email))
+    # Look up by Google provider_id first, then by email+google pair
+    res = await db.execute(
+        select(User).where(
+            User.auth_provider == "google",
+            User.provider_id == google_user_id
+        )
+    )
     user = res.scalar_one_or_none()
-    if not user:
+
+    if user:
+        # Existing user - update email if changed
+        if email != user.email:
+            user.email = email
+            await db.commit()
+            await db.refresh(user)
+    else:
+        # New Google user (same email with different provider is allowed)
         user = User(
             email=email,
             auth_provider="google",
@@ -124,16 +143,77 @@ async def google_login(payload: GoogleAuthReq, db: AsyncSession = Depends(get_db
         }
     }
 
+@router.post("/apple/debug")
+async def apple_debug(request: Request):
+    """Debug endpoint to see raw request body"""
+    body = await request.json()
+    logger.info(f"Apple auth request body: {body}")
+    return {"received_keys": list(body.keys()), "body": body}
+
 @router.post("/apple")
 async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db)):
-    """Fake Apple OAuth login for development"""
-    res = await db.execute(select(User).where(User.email == payload.user_email))
+    """
+    Apple Sign-In - verifies identity_token with Apple's JWKS keys.
+
+    The identity_token is a JWT signed by Apple containing the user's
+    Apple ID (sub claim) and optionally their email.
+    """
+    # Verify the Apple identity token
+    try:
+        claims = await verify_apple_token(
+            identity_token=payload.identity_token,
+            nonce=payload.nonce
+        )
+    except AppleAuthError as e:
+        if e.code == "SERVER_ERROR":
+            raise HTTPException(
+                status_code=500,
+                detail={"error": {"code": e.code, "message": e.message, "details": e.details}}
+            )
+        raise HTTPException(
+            status_code=401,
+            detail={"error": {"code": e.code, "message": e.message, "details": e.details}}
+        )
+
+    apple_user_id = claims.sub
+
+    # Lookup user by Apple provider_id
+    res = await db.execute(
+        select(User).where(
+            User.auth_provider == "apple",
+            User.provider_id == apple_user_id
+        )
+    )
     user = res.scalar_one_or_none()
-    if not user:
+
+    if user:
+        # Existing user - optionally update email if changed
+        if claims.email and claims.email != user.email:
+            user.email = claims.email
+            await db.commit()
+            await db.refresh(user)
+    else:
+        # New user - need email
+        email = claims.email or payload.user_email
+        if not email:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Email required for first Apple sign-in",
+                        "details": {
+                            "hint": "Pass user_email in request body if Apple doesn't provide it"
+                        }
+                    }
+                }
+            )
+
+        # Create new Apple user (same email with different provider is now allowed)
         user = User(
-            email=payload.user_email,
+            email=email,
             auth_provider="apple",
-            provider_id=f"apple_{payload.identity_token[:16]}",
+            provider_id=apple_user_id,
         )
         db.add(user)
         await db.commit()
@@ -155,7 +235,13 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
 
 @router.post("/register")
 async def register(payload: RegisterReq, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(User).where(User.email == payload.email))
+    # Check if email already registered with local auth
+    res = await db.execute(
+        select(User).where(
+            User.email == payload.email,
+            User.auth_provider == "local"
+        )
+    )
     if res.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -183,7 +269,13 @@ async def register(payload: RegisterReq, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login")
 async def login(payload: LoginReq, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(User).where(User.email == payload.email))
+    # Only find local auth users for password login
+    res = await db.execute(
+        select(User).where(
+            User.email == payload.email,
+            User.auth_provider == "local"
+        )
+    )
     user = res.scalar_one_or_none()
 
     if not user or not user.password_hash:

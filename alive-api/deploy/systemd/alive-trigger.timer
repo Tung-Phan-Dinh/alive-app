@@ -1,0 +1,29 @@
+# Alive App Trigger Timer
+# Runs the trigger worker every minute
+#
+# Commands:
+#   sudo systemctl enable alive-trigger.timer   # Enable on boot
+#   sudo systemctl start alive-trigger.timer    # Start timer
+#   sudo systemctl status alive-trigger.timer   # Check timer status
+#   sudo systemctl list-timers                  # List all timers
+#   journalctl -u alive-trigger.service -f      # Follow logs
+
+[Unit]
+Description=Run Alive Trigger Worker every minute
+
+[Timer]
+# Run every minute
+OnBootSec=1min
+OnUnitActiveSec=1min
+
+# Randomize start time slightly to avoid thundering herd
+RandomizedDelaySec=5
+
+# Persist timer state across reboots
+Persistent=true
+
+# Run immediately if a run was missed
+OnClockChange=true
+
+[Install]
+WantedBy=timers.target
