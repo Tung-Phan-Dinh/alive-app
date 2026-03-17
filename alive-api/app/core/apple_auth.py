@@ -209,12 +209,20 @@ def _generate_apple_client_secret() -> Optional[str]:
     if not all([settings.APPLE_TEAM_ID, settings.APPLE_KEY_ID, settings.APPLE_PRIVATE_KEY]):
         return None
 
-    try:
-        # Decode the base64-encoded private key
-        private_key_pem = base64.b64decode(settings.APPLE_PRIVATE_KEY).decode("utf-8")
-    except Exception:
-        # Try using it as-is if not base64 encoded
-        private_key_pem = settings.APPLE_PRIVATE_KEY
+    private_key_raw = settings.APPLE_PRIVATE_KEY
+
+    # Handle escaped newlines (e.g., from .env files)
+    if "\\n" in private_key_raw:
+        private_key_pem = private_key_raw.replace("\\n", "\n")
+    elif private_key_raw.startswith("-----BEGIN"):
+        # Already a valid PEM
+        private_key_pem = private_key_raw
+    else:
+        # Try base64 decode
+        try:
+            private_key_pem = base64.b64decode(private_key_raw).decode("utf-8")
+        except Exception:
+            private_key_pem = private_key_raw
 
     now = datetime.now(timezone.utc)
     expiry = now + timedelta(days=180)  # Max 6 months

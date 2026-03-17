@@ -2,7 +2,7 @@ CREATE DATABASE IF NOT EXISTS alive_app
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_0900_ai_ci;
 
-CREATE USER IF NOT EXISTS 'alive_api'@'localhost' IDENTIFIED BY '572Chien';
+-- CREATE USER IF NOT EXISTS 'alive_api'@'localhost' IDENTIFIED BY '572Chien';
 
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
 ON alive_app.* TO 'alive_api'@'localhost';

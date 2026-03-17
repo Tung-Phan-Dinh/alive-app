@@ -19,10 +19,10 @@ class Settings(BaseSettings):
     GOOGLE_IOS_CLIENT_ID: str = ""
 
     # Apple Sign-In
-    APPLE_CLIENT_ID: str = "com.udead.app"  # iOS Bundle ID (e.g., com.yourapp.alive)
-    APPLE_ISSUER: str = "https://appleid.apple.com"
-    APPLE_JWKS_URL: str = "https://appleid.apple.com/auth/keys"
-    APPLE_JWKS_CACHE_HOURS: int = 6
+    APPLE_CLIENT_ID: str = os.getenv("APPLE_CLIENT_ID") # iOS Bundle ID 
+    APPLE_ISSUER: str = os.getenv("APPLE_ISSUER")
+    APPLE_JWKS_URL: str = os.getenv("APPLE_JWKS_URL")
+    APPLE_JWKS_CACHE_HOURS: int = os.getenv("APPLE_JWKS_CACHE_HOURS")
 
     # Apple Token Revocation (for account deletion - get from your Apple Developer account)
     APPLE_TEAM_ID: str = os.getenv("APPLE_TEAM_ID") # Your Apple Developer Team ID
