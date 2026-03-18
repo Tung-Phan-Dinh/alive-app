@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 import logging
 
 logger = logging.getLogger(__name__)
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -38,6 +38,13 @@ class AppleAuthReq(BaseModel):
     identity_token: str
     user_email: Optional[EmailStr] = None
     nonce: Optional[str] = None
+
+    @field_validator('user_email', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == '':
+            return None
+        return v
 
 @router.post("/dev")
 async def dev_login(payload: DevLoginReq, db: AsyncSession = Depends(get_db)):
