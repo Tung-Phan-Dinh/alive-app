@@ -211,18 +211,12 @@ def _generate_apple_client_secret() -> Optional[str]:
 
     private_key_raw = settings.APPLE_PRIVATE_KEY
 
-    # Handle escaped newlines (e.g., from .env files)
-    if "\\n" in private_key_raw:
-        private_key_pem = private_key_raw.replace("\\n", "\n")
-    elif private_key_raw.startswith("-----BEGIN"):
-        # Already a valid PEM
-        private_key_pem = private_key_raw
-    else:
-        # Try base64 decode
-        try:
-            private_key_pem = base64.b64decode(private_key_raw).decode("utf-8")
-        except Exception:
-            private_key_pem = private_key_raw
+    # Normalize the private key to valid PEM format
+    private_key_pem = _normalize_pem_key(private_key_raw)
+
+    if not private_key_pem:
+        logger.error("Failed to normalize Apple private key to PEM format")
+        return None
 
     now = datetime.now(timezone.utc)
     expiry = now + timedelta(days=180)  # Max 6 months
@@ -244,7 +238,54 @@ def _generate_apple_client_secret() -> Optional[str]:
         return jwt.encode(payload, private_key_pem, algorithm="ES256", headers=headers)
     except Exception as e:
         logger.error(f"Failed to generate Apple client_secret: {e}")
+        logger.debug(f"PEM key starts with: {private_key_pem[:50] if private_key_pem else 'None'}...")
         return None
+
+
+def _normalize_pem_key(key_raw: str) -> Optional[str]:
+    """
+    Normalize a private key to valid PEM format.
+    Handles: escaped newlines, base64 encoded, or raw PEM.
+    """
+    if not key_raw:
+        return None
+
+    # Strip whitespace and quotes
+    key = key_raw.strip().strip('"').strip("'")
+
+    # Case 1: Contains literal \n characters (escaped in .env)
+    if "\\n" in key:
+        key = key.replace("\\n", "\n")
+
+    # Case 2: Contains literal backslash-n from some parsers
+    if "\\" + "n" in key:
+        key = key.replace("\\" + "n", "\n")
+
+    # Case 3: Already valid PEM
+    if key.startswith("-----BEGIN"):
+        return key
+
+    # Case 4: Try base64 decode
+    try:
+        decoded = base64.b64decode(key).decode("utf-8")
+        if decoded.startswith("-----BEGIN"):
+            return decoded
+    except Exception:
+        pass
+
+    # Case 5: Key might be just the base64 content without PEM headers
+    # Wrap it in PEM headers
+    if not key.startswith("-----"):
+        try:
+            # Validate it's valid base64
+            base64.b64decode(key)
+            pem = f"-----BEGIN PRIVATE KEY-----\n{key}\n-----END PRIVATE KEY-----"
+            return pem
+        except Exception:
+            pass
+
+    logger.error(f"Unable to parse private key. Starts with: {key[:20]}...")
+    return None
 
 
 async def revoke_apple_token(refresh_token: Optional[str] = None) -> bool:

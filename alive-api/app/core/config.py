@@ -1,7 +1,6 @@
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
-import os
-from dotenv import load_dotenv
+
 
 class Settings(BaseSettings):
     APP_NAME: str = "U dead ??"
@@ -19,15 +18,15 @@ class Settings(BaseSettings):
     GOOGLE_IOS_CLIENT_ID: str = ""
 
     # Apple Sign-In
-    APPLE_CLIENT_ID: str = os.getenv("APPLE_CLIENT_ID") # iOS Bundle ID 
-    APPLE_ISSUER: str = os.getenv("APPLE_ISSUER")
-    APPLE_JWKS_URL: str = os.getenv("APPLE_JWKS_URL")
-    APPLE_JWKS_CACHE_HOURS: int = os.getenv("APPLE_JWKS_CACHE_HOURS")
+    APPLE_CLIENT_ID: str = ""  # iOS Bundle ID
+    APPLE_ISSUER: str = "https://appleid.apple.com"
+    APPLE_JWKS_URL: str = "https://appleid.apple.com/auth/keys"
+    APPLE_JWKS_CACHE_HOURS: int = 24
 
     # Apple Token Revocation (for account deletion - get from your Apple Developer account)
-    APPLE_TEAM_ID: str = os.getenv("APPLE_TEAM_ID") # Your Apple Developer Team ID
-    APPLE_KEY_ID: str = os.getenv("APPLE_KEY_ID")  # Key ID for Sign in with Apple private key
-    APPLE_PRIVATE_KEY: str = os.getenv("APPLE_PRIVATE_KEY")  # Base64-encoded .p8 private key contents
+    APPLE_TEAM_ID: str = ""  # Your Apple Developer Team ID
+    APPLE_KEY_ID: str = ""  # Key ID for Sign in with Apple private key
+    APPLE_PRIVATE_KEY: str = ""  # .p8 private key (escaped newlines or base64)
 
     # Email settings (SMTP)
     SMTP_HOST: str = ""  # e.g., smtp.gmail.com
