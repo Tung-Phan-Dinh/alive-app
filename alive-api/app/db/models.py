@@ -35,6 +35,7 @@ class User(Base):
 
     contacts = relationship("Contact", back_populates="user", cascade="all, delete-orphan")
     checkins = relationship("Checkin", back_populates="user", cascade="all, delete-orphan")
+    trigger_events = relationship("TriggerEvent", back_populates="user", cascade="all, delete-orphan")
 
 class Contact(Base):
     __tablename__ = "contacts"
@@ -84,7 +85,7 @@ class TriggerEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", backref="trigger_events")
+    user = relationship("User", back_populates="trigger_events")
     notifications = relationship("Notification", back_populates="trigger_event", cascade="all, delete-orphan")
 
 
