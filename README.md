@@ -2,6 +2,8 @@
 
 Backend service for **Alive App**, a safety-focused check-in system that allows users to periodically confirm they are active. If a user misses their configured check-in window, the backend can trigger follow-up workflows for their registered emergency contacts.
 
+Try our apps at: https://testflight.apple.com/join/Kmvxf7tt (For Apple users)
+
 ## Overview
 
 Alive App Backend is built with **FastAPI** and exposes a versioned REST API under `/api/v1`.
