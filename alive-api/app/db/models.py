@@ -14,6 +14,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(254), nullable=False)  # Unique per auth_provider
+    name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)  # Display name for notifications
 
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
@@ -23,6 +24,7 @@ class User(Base):
         default="local",
     )
     provider_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    apple_refresh_token: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     checkin_period_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=48)
     last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

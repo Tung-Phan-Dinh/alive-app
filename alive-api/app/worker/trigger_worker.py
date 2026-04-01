@@ -62,6 +62,8 @@ def build_email_body(user: User, contact: Contact) -> tuple[str, str]:
     Returns (text_body, html_body).
     """
     message = contact.death_message or DEFAULT_DEATH_MESSAGE
+    # Use user's name if set, otherwise fall back to email
+    user_display_name = user.name or user.email
 
     text_body = f"""Emergency Alert from Alive App
 
@@ -70,7 +72,7 @@ Contact Name: {contact.name}
 {message.strip()}
 
 ---
-This message was sent by the Alive App on behalf of {user.email}.
+This message was sent by the Alive App on behalf of {user_display_name}.
 """
 
     html_body = f"""
@@ -98,7 +100,7 @@ This message was sent by the Alive App on behalf of {user.email}.
                 {message.strip().replace(chr(10), '<br>')}
             </div>
             <div class="footer">
-                <p>This message was sent by the Alive App on behalf of {user.email}.</p>
+                <p>This message was sent by the Alive App on behalf of {user_display_name}.</p>
             </div>
         </div>
     </div>
@@ -245,10 +247,11 @@ async def send_notification(
 ) -> bool:
     """Send an email notification and update the DB record."""
     text_body, html_body = build_email_body(user, contact)
+    user_display_name = user.name or user.email
 
     message = EmailMessage(
         to=contact.email,
-        subject=f"Emergency Alert: {user.email} has not checked in",
+        subject=f"Emergency Alert: {user_display_name} has not checked in",
         body_text=text_body,
         body_html=html_body,
     )

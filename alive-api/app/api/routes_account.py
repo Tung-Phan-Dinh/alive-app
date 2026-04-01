@@ -32,11 +32,11 @@ async def delete_account(
 
     # For Apple users, attempt token revocation (App Store requirement)
     if user.auth_provider == "apple":
-        # Note: We don't currently store refresh_token, so this will log a warning
-        # but still proceed with deletion. To fully comply with Apple's requirements,
-        # store the refresh_token during sign-in and pass it here.
-        await revoke_apple_token(refresh_token=None)
-        logger.info(f"Apple account deletion initiated for user {user.id}")
+        revoked = await revoke_apple_token(refresh_token=user.apple_refresh_token)
+        if revoked:
+            logger.info(f"Apple token revoked for user {user.id}")
+        else:
+            logger.warning(f"Apple token revocation failed for user {user.id}, proceeding with deletion")
 
     await db.delete(user)
     await db.commit()

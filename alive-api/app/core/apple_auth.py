@@ -199,6 +199,77 @@ async def verify_apple_token(
     )
 
 
+class AppleTokenResponse:
+    """Response from Apple token exchange."""
+    def __init__(
+        self,
+        access_token: str,
+        refresh_token: Optional[str],
+        id_token: str,
+        expires_in: int,
+    ):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.id_token = id_token
+        self.expires_in = expires_in
+
+
+async def exchange_authorization_code(authorization_code: str) -> Optional[AppleTokenResponse]:
+    """
+    Exchange Apple authorization_code for tokens.
+
+    This is required to get the refresh_token which is needed for:
+    1. Token revocation during account deletion (App Store requirement)
+    2. Refreshing access tokens if needed
+
+    Args:
+        authorization_code: The code from iOS ASAuthorizationAppleIDCredential.authorizationCode
+
+    Returns:
+        AppleTokenResponse with access_token, refresh_token, id_token
+        None if exchange fails or credentials not configured
+    """
+    client_secret = _generate_apple_client_secret()
+    if not client_secret:
+        logger.warning(
+            "Apple authorization code exchange skipped: credentials not configured. "
+            "refresh_token will not be available for revocation."
+        )
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://appleid.apple.com/auth/token",
+                data={
+                    "client_id": settings.APPLE_CLIENT_ID,
+                    "client_secret": client_secret,
+                    "code": authorization_code,
+                    "grant_type": "authorization_code",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=10.0,
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"Apple token exchange failed: {response.status_code} - {response.text}"
+                )
+                return None
+
+            data = response.json()
+            return AppleTokenResponse(
+                access_token=data["access_token"],
+                refresh_token=data.get("refresh_token"),  # May not always be present
+                id_token=data["id_token"],
+                expires_in=data.get("expires_in", 3600),
+            )
+
+    except Exception as e:
+        logger.error(f"Apple token exchange error: {e}")
+        return None
+
+
 def _generate_apple_client_secret() -> Optional[str]:
     """
     Generate a client_secret JWT for Apple API calls.

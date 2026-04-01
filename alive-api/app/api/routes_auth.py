@@ -15,7 +15,7 @@ from app.db.session import get_db
 from app.db.models import User
 from app.core.security import create_access_token, hash_password, verify_password
 from app.core.config import settings
-from app.core.apple_auth import verify_apple_token, AppleAuthError
+from app.core.apple_auth import verify_apple_token, exchange_authorization_code, AppleAuthError
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,10 +36,11 @@ class GoogleAuthReq(BaseModel):
 
 class AppleAuthReq(BaseModel):
     identity_token: str
+    authorization_code: Optional[str] = None  # Required for refresh_token (revocation)
     user_email: Optional[EmailStr] = None
     nonce: Optional[str] = None
 
-    @field_validator('user_email', mode='before')
+    @field_validator('user_email', 'authorization_code', mode='before')
     @classmethod
     def empty_string_to_none(cls, v):
         if v == '':
@@ -62,6 +63,7 @@ async def dev_login(payload: DevLoginReq, db: AsyncSession = Depends(get_db)):
         "user": {
             "id": str(user.id),
             "email": user.email,
+            "name": user.name,
             "auth_provider": user.auth_provider,
             "checkin_period_hours": user.checkin_period_hours,
             "last_active_at": user.last_active_at.strftime("%Y-%m-%dT%H:%M:%SZ") if user.last_active_at else None,
@@ -142,6 +144,7 @@ async def google_login(payload: GoogleAuthReq, db: AsyncSession = Depends(get_db
         "user": {
             "id": str(user.id),
             "email": user.email,
+            "name": user.name,
             "auth_provider": user.auth_provider,
             "checkin_period_hours": user.checkin_period_hours,
             "last_active_at": user.last_active_at.strftime("%Y-%m-%dT%H:%M:%SZ") if user.last_active_at else None,
@@ -164,6 +167,9 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
 
     The identity_token is a JWT signed by Apple containing the user's
     Apple ID (sub claim) and optionally their email.
+
+    If authorization_code is provided, exchanges it for refresh_token
+    which is stored for later revocation during account deletion.
     """
     # Verify the Apple identity token
     try:
@@ -184,6 +190,19 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
 
     apple_user_id = claims.sub
 
+    # Exchange authorization_code for refresh_token (for later revocation)
+    refresh_token = None
+    if payload.authorization_code:
+        token_response = await exchange_authorization_code(payload.authorization_code)
+        if token_response and token_response.refresh_token:
+            refresh_token = token_response.refresh_token
+            logger.info(f"Obtained Apple refresh_token for user {apple_user_id[:8]}...")
+        else:
+            logger.warning(
+                f"Could not obtain refresh_token for Apple user {apple_user_id[:8]}... "
+                "Token revocation may not work during account deletion."
+            )
+
     # Lookup user by Apple provider_id
     res = await db.execute(
         select(User).where(
@@ -194,11 +213,13 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
     user = res.scalar_one_or_none()
 
     if user:
-        # Existing user - optionally update email if changed
+        # Existing user - update email if changed, always update refresh_token
         if claims.email and claims.email != user.email:
             user.email = claims.email
-            await db.commit()
-            await db.refresh(user)
+        if refresh_token:
+            user.apple_refresh_token = refresh_token
+        await db.commit()
+        await db.refresh(user)
     else:
         # New user - need email
         email = claims.email or payload.user_email
@@ -216,11 +237,12 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
                 }
             )
 
-        # Create new Apple user (same email with different provider is now allowed)
+        # Create new Apple user
         user = User(
             email=email,
             auth_provider="apple",
             provider_id=apple_user_id,
+            apple_refresh_token=refresh_token,
         )
         db.add(user)
         await db.commit()
@@ -232,6 +254,7 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
         "user": {
             "id": str(user.id),
             "email": user.email,
+            "name": user.name,
             "auth_provider": user.auth_provider,
             "checkin_period_hours": user.checkin_period_hours,
             "last_active_at": user.last_active_at.strftime("%Y-%m-%dT%H:%M:%SZ") if user.last_active_at else None,
@@ -267,6 +290,7 @@ async def register(payload: RegisterReq, db: AsyncSession = Depends(get_db)):
         "user": {
             "id": str(user.id),
             "email": user.email,
+            "name": user.name,
             "auth_provider": user.auth_provider,
             "checkin_period_hours": user.checkin_period_hours,
             "last_active_at": None,
@@ -297,6 +321,7 @@ async def login(payload: LoginReq, db: AsyncSession = Depends(get_db)):
         "user": {
             "id": str(user.id),
             "email": user.email,
+            "name": user.name,
             "auth_provider": user.auth_provider,
             "checkin_period_hours": user.checkin_period_hours,
             "last_active_at": user.last_active_at.strftime("%Y-%m-%dT%H:%M:%SZ") if user.last_active_at else None,
@@ -315,6 +340,7 @@ async def me(user: User = Depends(get_current_user)):
     return {
         "id": str(user.id),
         "email": user.email,
+        "name": user.name,
         "auth_provider": user.auth_provider,
         "checkin_period_hours": user.checkin_period_hours,
         "last_active_at": last.strftime("%Y-%m-%dT%H:%M:%SZ") if last else None,
