@@ -263,8 +263,14 @@ async def apple_login(payload: AppleAuthReq, db: AsyncSession = Depends(get_db))
         }
     }
 
+TEST_EMAIL = "test@example.com"
+
 @router.post("/register")
 async def register(payload: RegisterReq, db: AsyncSession = Depends(get_db)):
+    # Only allow test email for local auth
+    if payload.email != TEST_EMAIL:
+        raise HTTPException(status_code=403, detail="Local auth is restricted to test account only")
+
     # Check if email already registered with local auth
     res = await db.execute(
         select(User).where(
@@ -300,6 +306,10 @@ async def register(payload: RegisterReq, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login")
 async def login(payload: LoginReq, db: AsyncSession = Depends(get_db)):
+    # Only allow test email for local auth
+    if payload.email != TEST_EMAIL:
+        raise HTTPException(status_code=403, detail="Local auth is restricted to test account only")
+
     # Only find local auth users for password login
     res = await db.execute(
         select(User).where(
